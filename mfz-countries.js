@@ -1,5 +1,5 @@
 /*!
- * mfz-countries.js v1.2.0
+ * mfz-countries.js v1.2.2
  * Country of Residence dropdown for Meydan Free Zone forms
  * - Supports both name="Country_of_Residence" (Marketing Form)
  *   and name="Country-of-Residence" (Contact Us Form)
@@ -145,15 +145,6 @@
     {code:"ZM",name:"Zambia"},{code:"ZW",name:"Zimbabwe"}
   ];
 
-  // ─── Priority list for MFZ audience (pre-computed once, reused per dropdown) ──
-  var PRIORITY_CODES = [
-    "AE","IN","PK","SA","GB","EG","PH","OM","KW","QA","BH","JO",
-    "LB","NG","KE","MA","TZ","ZA","US","CA","AU","DE","FR","IT",
-    "RU","CN","SG","MY","BD","LK","NP","TR","IR","IQ","SY","YE","SD","ET"
-  ];
-  var PRIORITY_LIST = COUNTRIES.filter(function(c) { return PRIORITY_CODES.indexOf(c.code) !== -1; });
-  var REST_LIST     = COUNTRIES.filter(function(c) { return PRIORITY_CODES.indexOf(c.code) === -1; });
-
   // ─── Expose globally for WebEngage / other scripts ───────────────────────────
   window.MFZ_COUNTRIES = COUNTRIES;
 
@@ -192,31 +183,24 @@
 
     while (select.options.length > 1) select.remove(1); // clear, keep placeholder
 
-    function makeGroup(label, list) {
-      var group = document.createElement('optgroup');
-      group.label = label;
-      var frag = document.createDocumentFragment();
-      list.forEach(function(c) {
-        var opt = document.createElement('option');
-        opt.value        = c.name;
-        opt.dataset.code = c.code;
-        opt.textContent  = c.name;
-        frag.appendChild(opt);
-      });
-      group.appendChild(frag);
-      return group;
-    }
-
-    var container = document.createDocumentFragment();
-    // add popular group first
-    // container.appendChild(makeGroup('── Popular ──', PRIORITY_LIST));
-    container.appendChild(makeGroup('── All Countries ──', REST_LIST));
-    select.appendChild(container); // single DOM write
+    // Flat alphabetical list — no groups
+    var frag = document.createDocumentFragment();
+    COUNTRIES.forEach(function(c) {
+      var opt = document.createElement('option');
+      opt.value        = c.name;
+      opt.dataset.code = c.code;
+      opt.textContent  = c.name;
+      frag.appendChild(opt);
+    });
+    select.appendChild(frag); // single DOM write
 
     select.addEventListener('change', function() { syncCodeField(this); });
   }
 
   // ─── Geo-detection: cached in sessionStorage, 1 API call per session ─────────
+  // Primary:  ip-api.com  (no referrer restrictions, works on staging + production)
+  // Fallback: ipapi.co    (backup if primary fails)
+  // Both fail silently — user just selects manually
   function applyGeoToSelects(selects, isoCode) {
     Array.prototype.forEach.call(selects, function(select) {
       if (!select.value) setCountryByCode(select, isoCode);
@@ -224,32 +208,53 @@
   }
 
   function detectAndApplyGeoCountry(selects) {
-    // Check cache first — if found, apply instantly with no API call
+    // Check sessionStorage cache first — zero API calls on repeat visits
     try {
       var cached = sessionStorage.getItem(GEO_CACHE_KEY);
       if (cached) { applyGeoToSelects(selects, cached); return; }
-    } catch(e) { /* sessionStorage blocked (Safari private mode etc.) */ }
-
-    // Async API call — 3s timeout, completely non-blocking, silent on all failures
-    try {
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', 'https://ipapi.co/json/', true);
-      xhr.timeout = 3000;
-      xhr.onload = function() {
-        if (xhr.status !== 200) return;
-        try {
-          var data = JSON.parse(xhr.responseText);
-          if (data && data.country_code) {
-            var code = data.country_code.toUpperCase();
-            try { sessionStorage.setItem(GEO_CACHE_KEY, code); } catch(e) {}
-            applyGeoToSelects(selects, code);
-          }
-        } catch(e) {}
-      };
-      xhr.onerror   = function() {};
-      xhr.ontimeout = function() {};
-      xhr.send();
     } catch(e) {}
+
+    // Helper: fire one XHR and call onSuccess(isoCode) or onFail()
+    function fetchGeo(url, parseCode, onSuccess, onFail) {
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.timeout = 3000;
+        xhr.onload = function() {
+          if (xhr.status !== 200) { onFail(); return; }
+          try {
+            var data = JSON.parse(xhr.responseText);
+            var code = parseCode(data);
+            if (code) { onSuccess(code.toUpperCase()); }
+            else { onFail(); }
+          } catch(e) { onFail(); }
+        };
+        xhr.onerror   = function() { onFail(); };
+        xhr.ontimeout = function() { onFail(); };
+        xhr.send();
+      } catch(e) { onFail(); }
+    }
+
+    function saveAndApply(code) {
+      try { sessionStorage.setItem(GEO_CACHE_KEY, code); } catch(e) {}
+      applyGeoToSelects(selects, code);
+    }
+
+    // Primary: ip-api.com — works on staging & production, no referrer restrictions
+    fetchGeo(
+      'https://ip-api.com/json/?fields=countryCode',
+      function(d) { return d && d.countryCode; },
+      saveAndApply,
+      function() {
+        // Fallback: ipapi.co — works on production
+        fetchGeo(
+          'https://ipapi.co/json/',
+          function(d) { return d && d.country_code; },
+          saveAndApply,
+          function() { /* both failed — user selects manually */ }
+        );
+      }
+    );
   }
 
   // ─── Init ─────────────────────────────────────────────────────────────────────
