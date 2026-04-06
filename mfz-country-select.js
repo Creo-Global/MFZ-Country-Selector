@@ -269,7 +269,7 @@
     if (!selects.length) return; // no country dropdowns on page — exit immediately
 
     Array.prototype.forEach.call(selects, buildDropdown); // sync + instant
-    detectAndApplyGeoCountry(selects);                    // async + non-blocking
+    //detectAndApplyGeoCountry(selects);                    // async + non-blocking / disable auto detect
   }
 
   if (document.readyState === 'loading') {
