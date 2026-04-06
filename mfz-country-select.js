@@ -166,9 +166,18 @@
   function setCountryByCode(select, isoCode) {
     var opts = select.options;
     for (var i = 0; i < opts.length; i++) {
+      opts[i].classList.remove('selected', 'current');
+    }
+    for (var i = 0; i < opts.length; i++) {
       if (opts[i].dataset.code === isoCode) {
         select.selectedIndex = i;
+        opts[i].classList.add('selected', 'current');
         syncCodeField(select);
+
+        // ← ADD THIS: notify the form that the value changed
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        select.dispatchEvent(new Event('input',  { bubbles: true }));
+
         return;
       }
     }
@@ -176,33 +185,37 @@
 
   // ─── Build a single dropdown using DocumentFragment (zero layout thrash) ──────
   function buildDropdown(select) {
-    // UAE pinned first, then alphabetical list
+    if (select.getAttribute(INIT_ATTR)) return; // guard restored
+    select.setAttribute(INIT_ATTR, 'true');
+
+    while (select.options.length > 1) select.remove(1); // clear, keep placeholder
+
     var frag = document.createDocumentFragment();
     var pinned = COUNTRIES.filter(function(c) { return c.code === 'AE'; });
     var rest   = COUNTRIES.filter(function(c) { return c.code !== 'AE'; });
     pinned.concat(rest).forEach(function(c) {
-      var opt = document.createElement('option');
-      opt.value        = c.name;
-      opt.dataset.code = c.code;
-      opt.textContent  = c.name;
-      frag.appendChild(opt);
+        var opt = document.createElement('option');
+        opt.value        = c.name;
+        opt.dataset.code = c.code;
+        opt.textContent  = c.name;
+        frag.appendChild(opt);
     });
-    select.appendChild(frag); // single DOM write
- 
-    // ─── Mark selected option with class so nice-select / custom UIs can style it ──
+    select.appendChild(frag);
+
     function markSelectedOption(select) {
-      Array.prototype.forEach.call(select.options, function(opt) {
-        opt.classList.remove('selected');
-      });
-      var chosen = select.options[select.selectedIndex];
-      if (chosen && chosen.value) {
-        chosen.classList.add('selected');
-      }
+        Array.prototype.forEach.call(select.options, function(opt) {
+            opt.classList.remove('selected', 'current');
+        });
+        var chosen = select.options[select.selectedIndex];
+        if (chosen && chosen.value) {
+            chosen.classList.add('selected', 'current');
+        }
     }
  
     select.addEventListener('change', function() {
       syncCodeField(this);
       markSelectedOption(this);
+      this.dataset.resolvedCountryValue = this.value;
     });
   }
 
