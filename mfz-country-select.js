@@ -176,14 +176,11 @@
 
   // ─── Build a single dropdown using DocumentFragment (zero layout thrash) ──────
   function buildDropdown(select) {
-    if (select.getAttribute(INIT_ATTR)) return; // already built — skip
-    select.setAttribute(INIT_ATTR, 'true');
-
-    while (select.options.length > 1) select.remove(1); // clear, keep placeholder
-
-    // Flat alphabetical list — no groups
+    // UAE pinned first, then alphabetical list
     var frag = document.createDocumentFragment();
-    COUNTRIES.forEach(function(c) {
+    var pinned = COUNTRIES.filter(function(c) { return c.code === 'AE'; });
+    var rest   = COUNTRIES.filter(function(c) { return c.code !== 'AE'; });
+    pinned.concat(rest).forEach(function(c) {
       var opt = document.createElement('option');
       opt.value        = c.name;
       opt.dataset.code = c.code;
@@ -191,8 +188,22 @@
       frag.appendChild(opt);
     });
     select.appendChild(frag); // single DOM write
-
-    select.addEventListener('change', function() { syncCodeField(this); });
+ 
+    // ─── Mark selected option with class so nice-select / custom UIs can style it ──
+    function markSelectedOption(select) {
+      Array.prototype.forEach.call(select.options, function(opt) {
+        opt.classList.remove('selected');
+      });
+      var chosen = select.options[select.selectedIndex];
+      if (chosen && chosen.value) {
+        chosen.classList.add('selected');
+      }
+    }
+ 
+    select.addEventListener('change', function() {
+      syncCodeField(this);
+      markSelectedOption(this);
+    });
   }
 
   // ─── Geo-detection: cached in sessionStorage, 1 API call per session ─────────
